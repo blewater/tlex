@@ -112,9 +112,6 @@ func getContainers(dockerClient *client.Client) ([]types.Container, error) {
 		return nil, err
 	}
 	liveContainers := len(containers)
-	if liveContainers == 0 {
-		log.Println("There are no live containers!")
-	}
 
 	return containers, nil
 }
