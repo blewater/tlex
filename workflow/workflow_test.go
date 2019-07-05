@@ -21,6 +21,7 @@ func intro(cfg *config.AppConfig, requestedLiveContainers int) {
 	cfg.LogFilename = helper.GetCWD() + string(os.PathSeparator) + "testdata" + string(os.PathSeparator) + "containers.log"
 	cfg.StatsFilename = helper.GetCWD() + string(os.PathSeparator) + "testdata" + string(os.PathSeparator) + "containers_stats.log"
 	cfg.DockerFilename = helper.GetCWD() + string(os.PathSeparator) + "testdata" + string(os.PathSeparator) + "Dockerfile"
+	cfg.InTestingModeWithChannelsSync = true
 }
 
 func testWorkflowXInstancesAppConfig(cfg *config.AppConfig) {
