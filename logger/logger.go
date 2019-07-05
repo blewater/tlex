@@ -11,6 +11,15 @@ type Logger struct {
 	logFile *os.File
 }
 
+// GetLogger returns a new logger for a given name in the process working directory.
+func GetLogger(logFilename string) Logger {
+
+	logger := Logger{}
+	logger.Open(logFilename)
+
+	return logger
+}
+
 // Open creates/opens the requested filesystem logFilePathName with
 // os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666 parameters.
 func (logger *Logger) Open(logFilePathName string) {

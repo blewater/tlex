@@ -14,7 +14,6 @@ import (
 
 	"tlex/config"
 	"tlex/dockerapi"
-	"tlex/helper"
 	"tlex/logger"
 
 	"github.com/docker/docker/api/types"
@@ -22,13 +21,32 @@ import (
 	"github.com/oklog/run"
 )
 
-var cfg = config.GetConfig()
+/** These package variables facilitate testing by state sharing **/
+
+// ContainersLaunched signifies containers are live.
+type ContainersLaunched chan bool
+
+// ContainersRemoved signifies containers are removed.
+type ContainersRemoved chan bool
+
+// ContainersChecked signifies containers' health check completed.
+type ContainersChecked chan bool
+
+// completedLaunch with 1 capacity set to true when containers are live
+var containersLaunched = make(ContainersLaunched, 1)
+var containersRemoved = make(ContainersRemoved, 1)
+var containersChecked = make(ContainersChecked, 1)
+
+// goroutines manager
+var g run.Group
 
 // Workflow performs the necessary steps to accomplish this tool's purpose.
-func Workflow() {
+func Workflow(cfg config.AppConfig) {
 
-	// Step 0: Acquire Config + dockerClient
-	dockerClient := dockerapi.GetDockerClient()
+	// Step 0: Facade to the docker remote API
+	dumpConfig(cfg)
+	var dockerClient = dockerapi.GetDockerClient()
+	defer dockerClient.Close()
 
 	// Step 1: Build the Docker Image.
 	dockerapi.BuildDockerImage(dockerClient, cfg.DockerFilename)
@@ -38,43 +56,56 @@ func Workflow() {
 	ownedContainers.CreateContainers(cfg.RequestedLiveContainers, dockerClient, cfg.DockerImageName, cfg.StartingHTTPServerNattedPort, cfg.DockerExposedPort)
 
 	// Step 3: Assume all containers are live.
-	ownedContainers.AssertAllContainersAreLive(cfg.RequestedLiveContainers, dockerClient)
-
-	// Enter Concurrent flow.
-	var g run.Group
+	ownedContainers.AssertOwnedContainersAreLive(cfg.RequestedLiveContainers, dockerClient)
+	if cfg.InTestingModeWithChannelsSync {
+		containersLaunched <- true
+	}
 
 	// Step 4: Monitor stats.
-	//statsLogger := getLogger(cfg.StatsFilename)
-	monitorContainerStatStreams(getLogger(cfg.StatsFilename), dockerClient, &g, ownedContainers)
+	monitorContainerStatStreams(logger.GetLogger(cfg.StatsFilename), dockerClient, cfg, &g, ownedContainers)
 
 	// Step 5: Aggregate the containers logs.
-	//containersLogger := getLogger(cfg.LogFilename)
-	aggContainersLogStreams(getLogger(cfg.LogFilename), dockerClient, &g, ownedContainers)
+	aggContainersLogStreams(logger.GetLogger(cfg.LogFilename), dockerClient, cfg, &g, ownedContainers)
 
 	// Step 6: Hook a clean exit sequence to the interrupt signal.
-	setupTerminateSignal(&g)
+	setupTerminateSignal(&g, cfg)
 
 	// Exit concurrent flow when 4, 5, 6 exit or err out.
 	g.Run()
 
-	defer ownedContainers.StopAllLiveContainers(dockerClient)
-	defer dockerClient.Close()
-	// defer containersLogger.Close()
-	// defer statsLogger.Close()
+	removeContainers(cfg, ownedContainers, dockerClient)
 }
 
-// getLogger returns a new logger for a given name in the process working directory.
-func getLogger(logFilename string) logger.Logger {
+func dumpConfig(cfg config.AppConfig) {
 
-	logger := logger.Logger{}
-	logger.Open(helper.GetCWD() + string(os.PathSeparator) + logFilename)
+	log.Printf("\nApplication Configuration:\n%v\n\n", cfg)
+}
 
-	return logger
+// SetWorkflowSyncWithAPI makes workflow cancellable with channel events
+// Useful for unit testing, benchmarkiing scenarios among others.
+func SetWorkflowSyncWithAPI() (ContainersLaunched, ContainersRemoved, ContainersChecked) {
+
+	g.Add(func() error {
+
+		<-containersChecked
+
+		return nil
+
+	}, func(err error) {
+
+	})
+
+	return containersLaunched, containersRemoved, containersChecked
 }
 
 // setupTerminateSignal connects the os.Interrupt signal to a quit channel to
 // start teardown for this process.
-func setupTerminateSignal(g *run.Group) {
+func setupTerminateSignal(g *run.Group, cfg config.AppConfig) {
+
+	// No point to wait for 0 containers
+	if cfg.RequestedLiveContainers == 0 {
+		return
+	}
 
 	log.Println()
 	log.Println()
@@ -92,14 +123,16 @@ func setupTerminateSignal(g *run.Group) {
 		log.Println("Received Interrupt signal. Cleaning up and exiting")
 		log.Println("--------------------------------------------------")
 		log.Println()
+
 		return nil
+
 	}, func(err error) {
 		close(quit)
 	})
 }
 
 // aggContainersLogStreams aggregates the LOGS streams to the single log file, stdout
-func aggContainersLogStreams(containersLogger logger.Logger, dockerClient *client.Client, g *run.Group, ownedContainers dockerapi.OwnedContainers) {
+func aggContainersLogStreams(containersLogger logger.Logger, dockerClient *client.Client, cfg config.AppConfig, g *run.Group, ownedContainers dockerapi.OwnedContainers) {
 
 	containersLogReaders := ownedContainers.GetContainersLogReaders(dockerClient)
 	if len(containersLogReaders) > 0 {
@@ -121,6 +154,7 @@ func aggContainersLogStreams(containersLogger logger.Logger, dockerClient *clien
 					log.Println(text)
 					containersLogger.Println(text)
 				}
+
 				return nil
 
 			}, func(error) {
@@ -134,7 +168,7 @@ func aggContainersLogStreams(containersLogger logger.Logger, dockerClient *clien
 }
 
 // monitorContainerStatStreams aggregates the STATS streams to single log file (optional), stdout
-func monitorContainerStatStreams(containersStatsLogger logger.Logger, dockerClient *client.Client, g *run.Group, ownedContainers dockerapi.OwnedContainers) {
+func monitorContainerStatStreams(containersStatsLogger logger.Logger, dockerClient *client.Client, cfg config.AppConfig, g *run.Group, ownedContainers dockerapi.OwnedContainers) {
 
 	const Bytes2MiB float64 = 1024 * 1024
 	const Bytes2GiB float64 = Bytes2MiB * 1024
@@ -193,4 +227,21 @@ func monitorContainerStatStreams(containersStatsLogger logger.Logger, dockerClie
 			})
 		}
 	}
+}
+
+// removeContainers removes the containers from the domain engine. Intended as a late clean up
+// step in the workflow before shutting down.
+func removeContainers(cfg config.AppConfig, ownedContainers dockerapi.OwnedContainers, dockerClient *client.Client) {
+
+	ownedContainers.StopAllLiveContainers(dockerClient)
+
+	//*** Note if InTestingModeWithChannelsSync is set to true during
+	// normal operation it will wait on containersChecked after erasing the containers.
+	// Used only for unit tests requiring being notified for intermediate state changes.
+
+	if cfg.InTestingModeWithChannelsSync {
+		containersRemoved <- true
+		<-containersChecked
+	}
+
 }

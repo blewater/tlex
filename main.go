@@ -2,11 +2,12 @@
 package main
 
 import (
+	"tlex/config"
 	wk "tlex/workflow"
 )
 
 func main() {
 
-	wk.Workflow()
+	wk.Workflow(config.GetConfig())
 
 }
