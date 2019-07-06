@@ -111,7 +111,6 @@ func getContainers(dockerClient *client.Client) ([]types.Container, error) {
 		log.Printf("Unable to list containers: %v", err)
 		return nil, err
 	}
-	liveContainers := len(containers)
 
 	return containers, nil
 }

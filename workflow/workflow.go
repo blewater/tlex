@@ -73,7 +73,7 @@ func Workflow(cfg config.AppConfig) {
 	// Exit concurrent flow when 4, 5, 6 exit or err out.
 	g.Run()
 
-	removeContainers(cfg, ownedContainers, dockerClient)
+	defer removeContainers(cfg, ownedContainers, dockerClient)
 }
 
 func dumpConfig(cfg config.AppConfig) {
