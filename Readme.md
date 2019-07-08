@@ -65,7 +65,15 @@ go test -run Test_Continuous_Logs_Http_Requests_100_Containers -timeout 100000s
 
 ### Installation ###
 
-The application builds and runs both *on* and *off* the **gopath** within the root *tlex* folder:
+Preferably within **$gopath\src**
+
+`git clone https://github.com/nethatix/tlex`
+
+`cd tlex`
+
+`./install.sh` (tested with windows bash) or `install.cmd` (windows)
+
+Note the application builds and runs both *on* and *off* the **gopath** within the root *tlex* folder:
 These commands worked in both locations on/off gopath locations:
 
 `go build ./...` 
