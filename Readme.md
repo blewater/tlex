@@ -8,15 +8,19 @@ Tool for meeting these requirements:
 
 * Create a **lean** Docker Image from the *Dockefile* in this repo.
 
-* To launch this simple http://github.com/nethatix/echopathws http listener that echoes back the requested url path i.e., localhost:8770/1/2/3/ -> 1/2/3/.
+* Tracking left over containers from a previous launch at ids.gob file so to stop them at next launch
 
-* Supporting a scalable number of live containers creation. 
+* To launch concurrently config.RequestedLiveContainers containers of the http://github.com/nethatix/echopathws http listener that echoes back the requested url path i.e., localhost:8770/1/2/3/ -> 1/2/3/.
+
+* Supporting a configurable number of live containers creation. 
 
 * Supporting liveness both as an app and through few unit tests.
 
 * Consuming the Docker statistics streams for each live container. Optional persistence to an aggregated text file separate from the logs.
 
 * Displaying and aggregating all the logging input streams of the live containers similarly to the statistics streams.
+
+* Concurrently remove all live instances.
 
 ### Deliverable ###
 
@@ -85,6 +89,8 @@ If you need any help to evaluate this or questions, please do not hesitate to co
     logFile.log        // is the application log file.
 
     StatsLogFile.log   // is the application stats file.
+
+    ids.gob // binary serialization of left over live containers.
 
 #### The Containerized Simple Echo Path HTTP Server ####
 

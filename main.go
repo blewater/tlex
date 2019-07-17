@@ -3,8 +3,15 @@ package main
 
 import (
 	"tlex/config"
+	"tlex/dockerapi"
 	wk "tlex/workflow"
 )
+
+// Cleanup previous owned live instances that might have been left hanging.
+func init() {
+
+	dockerapi.RemoveLiveContainersFromPreviousRun()
+}
 
 func main() {
 

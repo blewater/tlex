@@ -2,12 +2,15 @@
 package dockerapi
 
 import (
+	"sync"
 	"context"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"tlex/mapsi2disk"
 
+	"golang.org/x/sync/errgroup"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
@@ -26,6 +29,24 @@ type OwnedContainers map[string]int
 type ContainerReaderStream struct {
 	ReaderStream io.ReadCloser
 	HostPort     int
+}
+
+// Cleanup previous owned live instances that might have been left hanging.
+func RemoveLiveContainersFromPreviousRun() {
+
+	readObj, err := mapsi2disk.ReadContainerPortsFromDisk(mapsi2disk.GobFilename)
+	readBackOwnedContainers := readObj.(map[string]int)
+
+	if err == nil {
+		defer mapsi2disk.DeleteFile(mapsi2disk.GobFilename)
+
+		dockerClient := GetDockerClient()
+
+		for containerID := range readBackOwnedContainers {
+			log.Printf("Deleting container: %v from previous launch.\n", containerID)
+			err = dockerClient.ContainerStop(context.Background(), containerID, nil)
+		}
+	}
 }
 
 // GetDockerClient returns a docker remote api client handle value foundational to all Docker remote api interactions.
@@ -115,15 +136,16 @@ func getContainers(dockerClient *client.Client) ([]types.Container, error) {
 	return containers, nil
 }
 
-// cleanLeftOverContainers stops any found live containers.
-// Useful in when starting a new instance.
-func cleanLeftOverContainers(dockerClient *client.Client) {
+// CleanLeftOverContainers stops any *owned* live containers.
+// Useful in during lauching of containers fails and have to clean up launched instances.
+func (owned OwnedContainers)CleanLeftOverContainers(dockerClient *client.Client) {
 
 	containers, err := getContainers(dockerClient)
 	if err == nil {
-
 		for _, container := range containers {
-			err = dockerClient.ContainerStop(context.Background(), container.ID, nil)
+			if _, ok := owned[container.ID]; ok {
+				err = dockerClient.ContainerStop(context.Background(), container.ID, nil)
+			}
 		}
 	}
 }
@@ -242,20 +264,27 @@ func (owned OwnedContainers) GetContainersStatsReaders(dockerClient *client.Clie
 }
 
 // StopAllLiveContainers stops as many live containers as possible
-func (owned OwnedContainers) StopAllLiveContainers(dockerClient *client.Client) {
+func (owned OwnedContainers) StopAllLiveContainers(terminatorGroup *sync.WaitGroup, dockerClient *client.Client) {
 
 	containers, err := getContainers(dockerClient)
 	if err == nil {
 
 		for _, container := range containers {
 			if owned[container.ID] > 0 {
-				err = dockerClient.ContainerStop(context.Background(), container.ID, nil)
-				if err != nil {
-					log.Printf("Stopping container failed: %v\n", err)
-				} else {
-					log.Printf("Stopped container with ID: %s\n", container.ID)
-				}
-				delete(owned, container.ID)
+
+				contID := container.ID
+
+				terminatorGroup.Add(1)
+
+				go func() {
+					err = dockerClient.ContainerStop(context.Background(), contID, nil)
+					if err != nil {
+						log.Printf("Stopping container failed: %v\n", err)
+					} else {
+						log.Printf("Stopped container with ID: %s\n", contID)
+					}
+					defer terminatorGroup.Done()
+				}()
 			}
 		}
 	}
@@ -325,15 +354,42 @@ func setNewContainerLive(dockerClient *client.Client, imageName string, httpServ
 // at the container httpServerContainerPort value.
 // and at the host httpServerHostPort value.
 // Upon error it panics.
-func (owned OwnedContainers) CreateContainers(requestedLiveContainers int, dockerClient *client.Client, dockerImageName string, startingListeningHostPort int, containerListeningPort int) {
+func (owned OwnedContainers) CreateContainers(launcherGroup *errgroup.Group, requestedLiveContainers int, dockerClient *client.Client, dockerImageName string, startingListeningHostPort int, containerListeningPort int) {
 
-	cleanLeftOverContainers(dockerClient)
+	// Manage concurrent access to shared owned map
+	ownedMutex := &sync.Mutex{}
+
 	for i := 0; i < requestedLiveContainers; i++ {
-		hostPort := startingListeningHostPort + i
-		containerID, err := setNewContainerLive(dockerClient, dockerImageName, containerListeningPort, hostPort)
-		if err != nil {
-			log.Panicf("ContainerCreate failed for the image: %s, host port: %d with error:%s\n", dockerImageName, hostPort, err)
-		}
-		owned[containerID] = hostPort
+
+		// necessary to capture each loop iteration of i
+		portCounter := i
+
+		// Concurrent launching of docker instances
+		launcherGroup.Go(func() error {
+
+			hostPort := startingListeningHostPort + portCounter
+			containerID, err := setNewContainerLive(dockerClient, dockerImageName, containerListeningPort, hostPort)
+			if err != nil {
+				log.Panicf("ContainerCreate failed for the image: %s, host port: %d with error:%s\n", dockerImageName, hostPort, err)
+			}
+
+			ownedMutex.Lock()
+			owned[containerID] = hostPort
+			ownedMutex.Unlock()
+
+			return err
+		})
 	}
+}
+
+// PersistOpenContainers saves the presumed populated owned containers map id-> ports into the filesystem.
+func (owned OwnedContainers) PersistOpenContainerIDs() {
+
+	mapToSave := map[string]int(owned)
+
+	err := mapsi2disk.SaveContainerPorts2Disk(mapsi2disk.GobFilename, &mapToSave)
+	if err != nil {
+		log.Printf("SaveContainerPorts2Disk() error = %v\n", err)
+	}
+
 }

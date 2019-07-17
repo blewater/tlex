@@ -15,14 +15,14 @@ type Logger struct {
 func GetLogger(logFilename string) Logger {
 
 	logger := Logger{}
-	logger.Open(logFilename)
+	logger.open(logFilename)
 
 	return logger
 }
 
 // Open creates/opens the requested filesystem logFilePathName with
 // os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666 parameters.
-func (logger *Logger) Open(logFilePathName string) {
+func (logger *Logger) open(logFilePathName string) {
 
 	var err error
 	logger.logFile, err = os.OpenFile(logFilePathName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
@@ -39,7 +39,7 @@ func (logger *Logger) Println(v ...interface{}) {
 	fmt.Fprintln(logger.logFile, v...)
 }
 
-// Close closes the open
+// Close closes the open file handle
 func (logger *Logger) Close() {
 	logger.logFile.Close()
 }

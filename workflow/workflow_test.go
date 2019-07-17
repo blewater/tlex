@@ -66,9 +66,8 @@ func Test_Continuous_Logs_Http_Requests_100_Containers(t *testing.T) {
 	intro(&cfg, int(numberOfContainers))
 
 	go func() {
-		// 15 secs to get up
+		// 30 secs wait to start containers
 		time.Sleep(30 * time.Second)
-		start := time.Now()
 		var firstPort uint64 = 8770
 
 		var i uint64
@@ -82,7 +81,6 @@ func Test_Continuous_Logs_Http_Requests_100_Containers(t *testing.T) {
 				t.Errorf("Error %s\n", err)
 			}
 		}
-		fmt.Printf("%.2fs elapsed\n", time.Since(start).Seconds())
 	}()
 
 	Workflow(cfg)

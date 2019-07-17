@@ -10,15 +10,18 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 
 	"tlex/config"
 	"tlex/dockerapi"
 	"tlex/logger"
+	"tlex/mapsi2disk"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/oklog/run"
+	"golang.org/x/sync/errgroup"
 )
 
 /** These package variables facilitate testing by state sharing **/
@@ -37,7 +40,10 @@ var containersLaunched = make(ContainersLaunched, 1)
 var containersRemoved = make(ContainersRemoved, 1)
 var containersChecked = make(ContainersChecked, 1)
 
-// goroutines manager
+// containers go routine launcher
+var launcherGroup errgroup.Group
+
+// live containers goroutines manager
 var g run.Group
 
 // Workflow performs the necessary steps to accomplish this tool's purpose.
@@ -53,7 +59,13 @@ func Workflow(cfg config.AppConfig) {
 
 	// Step 2: Create the live Docker Containers.
 	ownedContainers := make(dockerapi.OwnedContainers)
-	ownedContainers.CreateContainers(cfg.RequestedLiveContainers, dockerClient, cfg.DockerImageName, cfg.StartingHTTPServerNattedPort, cfg.DockerExposedPort)
+	ownedContainers.CreateContainers(&launcherGroup, cfg.RequestedLiveContainers, dockerClient, cfg.DockerImageName, cfg.StartingHTTPServerNattedPort, cfg.DockerExposedPort)
+	if err := launcherGroup.Wait(); err != nil {
+		log.Printf("Error while launching containers: %v\n", err)
+		ownedContainers.CleanLeftOverContainers(dockerClient)
+	} else {
+		ownedContainers.PersistOpenContainerIDs()
+	}
 
 	// Step 3: Assume all containers are live.
 	ownedContainers.AssertOwnedContainersAreLive(cfg.RequestedLiveContainers, dockerClient)
@@ -233,7 +245,11 @@ func monitorContainerStatStreams(containersStatsLogger logger.Logger, dockerClie
 // step in the workflow before shutting down.
 func removeContainers(cfg config.AppConfig, ownedContainers dockerapi.OwnedContainers, dockerClient *client.Client) {
 
-	ownedContainers.StopAllLiveContainers(dockerClient)
+	// containers go routine launcher
+	var terminatorGroup sync.WaitGroup
+	ownedContainers.StopAllLiveContainers(&terminatorGroup, dockerClient)
+	terminatorGroup.Wait()
+	mapsi2disk.DeleteFile(mapsi2disk.GobFilename)
 
 	//*** Note if InTestingModeWithChannelsSync is set to true during
 	// normal operation it will wait on containersChecked after erasing the containers.
