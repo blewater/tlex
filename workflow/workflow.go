@@ -249,7 +249,8 @@ func removeContainers(cfg config.AppConfig, ownedContainers dockerapi.OwnedConta
 	var terminatorGroup sync.WaitGroup
 	ownedContainers.StopAllLiveContainers(&terminatorGroup, dockerClient)
 	terminatorGroup.Wait()
-	mapsi2disk.DeleteFile(mapsi2disk.GobFilename)
+
+	defer mapsi2disk.DeleteFile(mapsi2disk.GobFilename)
 
 	//*** Note if InTestingModeWithChannelsSync is set to true during
 	// normal operation it will wait on containersChecked after erasing the containers.

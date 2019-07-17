@@ -337,13 +337,12 @@ func setContainerLive(dockerClient *client.Client, containerID string) (string, 
 // at the container httpServerContainerPort value,
 // and at the host httpServerHostPort value.
 // Returns the new container ID, error.
-// Upon Error it panics.
 func setNewContainerLive(dockerClient *client.Client, imageName string, httpServerContainerPort int, httpServerHostPort int) (string, error) {
 
 	cont, err := createContainer(dockerClient, imageName, httpServerContainerPort, httpServerHostPort)
 	containerID, err := setContainerLive(dockerClient, cont.ID)
 	if err != nil {
-		log.Panicf("ContainerStart failed for the image: %s, host port: %d with error: %s\n", imageName, httpServerContainerPort, err)
+		log.Printf("ContainerStart failed for the image: %s, host port: %d with error: %s\n", imageName, httpServerContainerPort, err)
 		return "", err
 	}
 	log.Printf("Container %s with host port %d is live.\n", containerID, httpServerHostPort)
@@ -353,7 +352,6 @@ func setNewContainerLive(dockerClient *client.Client, imageName string, httpServ
 // CreateContainers requests live containers. It creates and starts them into an active live state for the given dockeImageName.
 // at the container httpServerContainerPort value.
 // and at the host httpServerHostPort value.
-// Upon error it panics.
 func (owned OwnedContainers) CreateContainers(launcherGroup *errgroup.Group, requestedLiveContainers int, dockerClient *client.Client, dockerImageName string, startingListeningHostPort int, containerListeningPort int) {
 
 	// Manage concurrent access to shared owned map
@@ -370,12 +368,13 @@ func (owned OwnedContainers) CreateContainers(launcherGroup *errgroup.Group, req
 			hostPort := startingListeningHostPort + portCounter
 			containerID, err := setNewContainerLive(dockerClient, dockerImageName, containerListeningPort, hostPort)
 			if err != nil {
-				log.Panicf("ContainerCreate failed for the image: %s, host port: %d with error:%s\n", dockerImageName, hostPort, err)
-			}
+				log.Printf("ContainerCreate failed for the image: %s, host port: %d with error:%s\n", dockerImageName, hostPort, err)
+			} else {
 
-			ownedMutex.Lock()
-			owned[containerID] = hostPort
-			ownedMutex.Unlock()
+				ownedMutex.Lock()
+				owned[containerID] = hostPort
+				ownedMutex.Unlock()
+			}
 
 			return err
 		})
