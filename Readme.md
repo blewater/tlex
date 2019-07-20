@@ -1,8 +1,4 @@
-# Docker exercise response #
-### by Mario Karagiorgas ### 
-salem@gmail.com
-
-6936640563
+# Multi Docker Containers Logger & Stats Aggregator #
 
 Tool for meeting these requirements:
 
@@ -24,14 +20,11 @@ Tool for meeting these requirements:
 
 ### Deliverable ###
 
-This is a basic statically configured command line application that is efficient and scalable.
+This is a statically configured command line application that is efficient and scalable.
 
 ### Testing ### 
 
-For this type of tooling, I focused on scalability, stability, and streaming logging correctness rather than micro validating (which is also valuable) lesser tracteristics. 
-
-This *workflow/workflow_test.go->Test_Continuous_Logs_Http_Requests_100_Containers* requires a large timeout to as the 30 seconds are not even sufficient to launch 100 instances (could be a thousand in my old windows machine) totaling I/O 200 reader streams, a rapid fire httpGet requester and 4 ouputs (stdout, stderr, log, statsfile). I left it there waiting to crash... but it didn't :)
-e.g., Υου may run it go test -run Test_Continuous_Logs_Http_Requests_100_Containers -timeout 100000s
+This *workflow/workflow_test.go->Test_Continuous_Logs_Http_Requests_100_Containers* requires a large timeout to as the 30 seconds are not even sufficient to launch 100 instances. Υου may run it go test -run Test_Continuous_Logs_Http_Requests_100_Containers -timeout 100000s
 
 ##### Workflow Unit tests #####
 
@@ -88,8 +81,6 @@ These commands worked in both locations on/off gopath locations:
 
 `go run tlex`
 
-If you need any help to evaluate this or questions, please do not hesitate to contact me. I can package this with any older dependency managers of your preference.
-
 ### Interesting Paths & Files ###
 
     Dockerfile // (The employed docker image spec in root folder. )
@@ -102,6 +93,4 @@ If you need any help to evaluate this or questions, please do not hesitate to co
 
 #### The Containerized Simple Echo Path HTTP Server ####
 
-https://github.com/nethatix/echopathws // public repo.
-
-If you need any help to evaluate this or have questions, please do not hesitate to contact me. I could also package this with any gopath dependency managers of your preference.
+https://github.com/nethatix/echopathws
